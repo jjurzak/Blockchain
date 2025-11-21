@@ -1,0 +1,93 @@
+import re
+from typing import Required
+from flask import Flask, request, jsonify
+from main import Blockchain
+from uuid import uuid4
+
+app = Flask(__name__)
+blockchain = Blockchain()
+
+USER_WALLETS = {}
+
+
+
+@app.route("/transactions/new", methods=["POST"])
+
+def new_transaction():
+    values = request.get_json()
+    required = ["sender", "recipient", "amount"]
+
+    if not all(k in values for k in required):
+        return jsonify({"error": "brak wymaganych pól"}), 400
+    
+    index = blockchain.jj_add_transaction_to_mempool(
+            values["sender"],
+            values["recipient"],
+            values["amount"],
+            )
+    return jsonify({"message": f"transakcja trafi do bloku {index}"}), 201
+
+
+@app.route("/mine", methods=["POST"])
+
+def mine_block():
+
+    reward = 5 
+    difficulty = 4
+
+    data = request.get_json()
+    if not data or "user" not in data:
+        return jsonify({"error": "Podaj nazwę użytkownika"}), 400
+
+    user = data["user"]
+
+
+    if user not in USER_WALLETS:
+        USER_WALLETS[user] = str(uuid4()).replace("-", "")
+
+    miner_wallet = USER_WALLETS[user]
+
+    blockchain.jj_add_transaction_to_mempool(sender="0", recipient=miner_wallet, amount=reward)
+
+    block = blockchain.jj_mine_block(difficulty)
+    response = {
+        "message": "Nowy blok wydobyty",
+        "index": block["index"],
+        "transactions": block["transactions"],
+        "merkle_root": block["merkle_root"],
+        "nonce": block["nonce"],
+        "hash": block["hash"],
+        "previous_hash": block["previous_hash"],
+        "reward": reward,
+        "miner": user,
+        "miner_wallet": miner_wallet
+    }
+    return jsonify(response), 200
+
+@app.route("/transactions/history/<address>", methods=["GET"])
+
+def transaction_history(address):
+    wallet = USER_WALLETS.get(user)
+    if not wallet:
+        return jsonify({"error": "Nie znaleziono uzytkownika"}), 404
+
+
+    history = []
+    for block in blockchain.jj_chain:
+        for tx in block.get("transactions", []):
+            if tx["sender"] == address or tx["recipient"] == address:
+                history.append(tx)
+    return jsonify({"addres": address, "wallet": wallet "transactions": history}), 200
+
+@app.route("/chain", methods=["GET"])
+    
+def full_chain():
+    response = {
+            'chain': blockchain.jj_chain,
+            'length': len(blockchain.jj_chain)
+            }
+    return jsonify(response), 200
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
