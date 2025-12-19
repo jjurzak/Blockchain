@@ -1,12 +1,15 @@
 import hashlib
 import time 
 import json
+import requests
+from urllib.parse import non_hierarchical, urlparse
 
 class Blockchain:
     def __init__(self):
         self.jj_chain = []
         self.jj_create_genesis_block()
         self.jj_mempool = []
+        self.nodes = set()
 
 
     def jj_create_genesis_block(self):
@@ -31,8 +34,7 @@ class Blockchain:
     def jj_get_last_block(self):
         return self.jj_chain[-1]
 
-    
-    
+       
     def jj_add_transaction_to_mempool(self, sender, recipient, amount):
         tx = {
             "sender": sender,
@@ -97,6 +99,69 @@ class Blockchain:
         self.jj_mempool = []
 
         return new_block
+    
+    def jj_register_node(self, address):
+        parsed_url = urlparse(address)
+        if parsed_url.netloc:
+            self.nodes.add(parsed_url.netloc)
+        elif parsed_url.path:
+            self.nodes.add(parsed_url.path)
+        else:
+            raise ValueError('Nieprawidlowy adres url')
+
+    def jj_valid_chain(self, chain):
+        last_block = chain[0]
+        current_index = 1
+
+        while current_index < len(chain):
+            block = chain[current_index]
+
+            if block['previous_hash'] != last_block['hash']:
+                return False
+            
+            recalculated_hash = self.jj_calculate_hash(
+                    block['index'],
+                    block['timestamp'],
+                    block['transactions'],
+                    block['previous_hash'],
+                    block['nonce']
+                    )
+            if block['hash'] != recalculated_hash:
+                return False
+
+            if not block['hash'].startswith('0000'):
+                return False
+            
+            last_block = block
+            current_index += 1
+
+        return True
+
+    def jj_resolve_conflicts(self):
+        neighbours = self.nodes
+        new_chain = None 
+        max_length = len(self.jj_chain)
+
+        for node in neighbours:
+            try:
+                response = requests.get(f'http://{node}/chain')
+
+                if response.status_code == 200:
+                    length = response.json()['length']
+                    chain = response.json()['chain']
+
+                    if length > max_length and self.jj_valid_chain(chain):
+                        max_length = length
+                        new_chain = chain
+            except requests.exceptions.RequestException:
+                continue
+
+        if new_chain:
+            self.jj_chain = new_chain
+            return True
+
+        return False
+
 
      
     def jj_add_block(self, data, difficulty):
